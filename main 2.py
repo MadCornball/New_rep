@@ -1,56 +1,53 @@
+import os
 import openai
-import pyautogui
 import pyperclip
-import time
-import concurrent.futures
-import io
 
 # Установите ваш API-ключ ChatGPT
-openai.api_key = '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'
-prompt = """Please provide a detailed documentation of the following Python code, including comments, docstrings, 
-and type hinting. List of RULES for you: 1 The comments and docstrings should be in Russian. 2 Add comments 
-with code descriptions per raw or per code block of logic (on your opinion as what will be better). 3 You MUST 
-add similar comments and docstrings everywhere it can be and personally fill them. 3 Don't 
-skip any lines of code! 4 Don't forget about additional description comments inside code (# [
-description]). 5 Add type hinting everywhere. 6 Don't collapse parts of code for the sake of saving 
-characters. You must write the entire resulting code to replace it once instead of unreformatted code from my 
-request! 7 You can and may optimize and clean up the resulting code as much as you can. 8 Save each result in your 
-context for the learning project and its architecture for better responses in future answers. This is the 
-selected code: \n```python\n\n```"""
-# Открываем файл в PyCharm Finder
-def open_file(filename):
-    pyautogui.run(f"h'shiftleft,win,O'w'{filename}'k'enter'")
+openai.api_key = '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'
 
+# Путь к директории с файлами
+dir_path = '/Users/vladglusko/PycharmProjects/pythonProject6/'
 
-# Отправляем содержимое файла в ChatGPT
-def send_to_chatgpt(prompt):
-    response = openai.Completion.create(
-        engine='text-davinci-003',
-        prompt=prompt,
-        max_tokens=100,
-        temperature=0.7,
-        n=1,
-        stop=None,
-        timeout=10
-    )
-    return response.choices[0].text.strip()
+# Получаем список файлов в директории
+files = os.listdir(dir_path)
 
-# Пример использования функций для открытия файла, копирования содержимого и отправки в ChatGPT
-filename = 'open /Users/vladglusko/PycharmProjects/pythonProject6/qwettttt.py'  # Замените на путь к вашему файлу
-open_file(filename)
+# Ищем файлы с расширением .py и копируем их содержимое в буфер обмена и отправляем в ChatGPT
+for f in files:
+    # Путь к файлу
+    file_path = os.path.join(dir_path, f)
 
+    # Проверяем, является ли файл .py
+    if os.path.isfile(file_path) and f.endswith('.py'):
+        # Копируем содержимое файла в буфер обмена
+        with open(file_path, 'r') as file:
+            pyperclip.copy(file.read())
 
-def replace_in_line(line):
-    return line.replace('old_substring', '/path/to/new_substring')
+        # Отправляем содержимое буфера обмена в ChatGPT с промптом
+        prompt = """Please provide a detailed documentation of the following Python code, including comments, docstrings, 
+        and type hinting. List of RULES for you: 1 The comments and docstrings should be in Russian. 2 Add comments 
+        with code descriptions per raw or per code block of logic (on your opinion as what will be better). 3 You MUST 
+        add similar comments and docstrings everywhere it can be and personally fill them. 3 Don't 
+        skip any lines of code! 4 Don't forget about additional description comments inside code (# [
+        description]). 5 Add type hinting everywhere. 6 Don't collapse parts of code for the sake of saving 
+        characters. You must write the entire resulting code to replace it once instead of unreformatted code from my 
+        request! 7 You can and may optimize and clean up the resulting code as much as you can. 8 Save each result in your 
+        context for the learning project and its architecture for better responses in future answers. This is the 
+        selected code: \n```python\n""" + pyperclip.paste() + "\n```"
 
-with io.open(filename, 'r') as f:
-    
-    with io.open('output', 'w', buffering=10000) as out:
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            for result in executor.map(replace_in_line, f):
-                out.write(result)
+        response = openai.Completion.create(
+            engine='text-davinci-003',
+            prompt=prompt,
+            max_tokens=100,
+            temperature=0.7,
+            n=1,
+            stop=None,
+            timeout=10,
+            input=str(pyperclip.paste())
+        )
 
-content = ...
+        # Копируем ответ из ChatGPT в буфер обмена
+        pyperclip.copy(response.choices[0].text.strip())
 
-response = send_to_chatgpt(prompt)
-print(response)
+        # Выводим результат на экран
+        print(f"Содержимое файла {f}:")
+        print(pyperclip.paste())
