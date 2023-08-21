@@ -1,3 +1,6 @@
 # FastAPI
 # Unicorn
 fastapi~=0.99.1
+
+psycopg2~=2.9.6
+uvicorn~=0.22.0

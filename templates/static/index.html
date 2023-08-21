@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Table Data</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Функция для отправки Ajax-запроса и загрузки картинки
+        function loadImage(imageUrl) {
+            $.ajax({
+                url: imageUrl,
+                method: 'GET',
+                success: function(response) {
+                    // Создание элемента изображения и установка его атрибута src
+                    var image = document.createElement('img');
+                    image.src = imageUrl;
+
+                    // Добавление изображения на страницу
+                    document.body.appendChild(image);
+                },
+                error: function(error) {
+                    console.log('Ошибка загрузки картинки:', error);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    {% if tables %}
+    <h1>Tables:</h1>
+    <ul>
+        {% for table in tables.tables %}
+        <li><a href="/{{ table }}/">{{ table }}</a></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if table_data %}
+    <h1>Table Data:</h1>
+    <table>
+        <thead>
+            <tr>
+                {% for key in table_data.0.keys() %}
+                <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in table_data %}
+            <tr>
+                {% for key, value in row.items() %}
+                <td>
+                    {% if key == 'image' %}
+                        <span style="cursor: pointer;" onclick="loadImage('/static/{{ value }}')">{{ value }}</span>
+                    {% else %}
+                        {{ value }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</body>
+</html>

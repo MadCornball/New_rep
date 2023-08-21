@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Table Data</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let socket = new WebSocket(`ws://${window.location.host}/ws`);
+            let isImageLoaded = false;
+
+            socket.onopen = function(event) {
+                console.log("WebSocket connected.");
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const imagePrefix = "data:image/png;base64,";
+                if (data.image_url && isImageLoaded) {
+                    const imageUrl = imagePrefix + data.image_url;
+                    $('#image-container img').attr('src', imageUrl);
+                }
+                if (data.table_data) {
+                    updateTable(data.table_data);
+                }
+            };
+
+            socket.onclose = function(event) {
+                console.log("WebSocket closed. Reconnecting in 5 seconds...");
+                setTimeout(function() {
+                    startWebSocket();
+                }, 5000);
+            };
+
+            function startWebSocket() {
+                socket = new WebSocket(`ws://${window.location.host}/ws`);
+                socket.onopen = function(event) {
+                    console.log("WebSocket reconnected.");
+                };
+                socket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    const imagePrefix = "data:image/png;base64,";
+                    if (data.image_url && isImageLoaded) {
+                        const imageUrl = imagePrefix + data.image_url;
+                        $('#image-container img').attr('src', imageUrl);
+                    }
+                    if (data.table_data) {
+                        updateTable(data.table_data);
+                    }
+                };
+                socket.onclose = function(event) {
+                    console.log("WebSocket closed. Reconnecting in 5 seconds...");
+                    setTimeout(function() {
+                        startWebSocket();
+                    }, 5000);
+                };
+            }
+
+            startWebSocket();
+
+            function loadTableDataViaWebSocket(table_name) {
+                socket.send(JSON.stringify({ table_name: table_name }));
+            }
+
+            function updateTable(table_data) {
+                let table = '<table><thead><tr>';
+                for (let key in table_data[0]) {
+                    table += `<th>${key}</th>`;
+                }
+                table += '</tr></thead><tbody>';
+                table_data.forEach(function(row) {
+                    table += '<tr>';
+                    for (let key in row) {
+                        table += `<td>${row[key]}</td>`;
+                    }
+                    table += '</tr>';
+                    if (row['path_to_image']) {
+                        table += '<tr>';
+                        table += `<td colspan="${Object.keys(row).length}"><img src="${row['path_to_image']}" alt="Image"></td>`;
+                        table += '</tr>';
+                    }
+                });
+                table += '</tbody></table>';
+                $('#table-container').html(table);
+            }
+
+            $('.table-button').click(function() {
+                let tableName = $(this).data('table-name');
+                if ($(this).hasClass('image-button')) {
+                    isImageLoaded = true;
+                    loadTableDataViaWebSocket(tableName);
+                } else {
+                    isImageLoaded = false;
+                    loadTableDataViaWebSocket(tableName);
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    {% if tables %}
+        <h1>Tables:</h1>
+        <ul>
+            {% for table in tables.tables %}
+                <li>
+                    <button class="table-button{% if table == 'image' %} image-button{% endif %}" data-table-name="{{ table }}">
+                        {{ table }}
+                    </button>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div id="table-container">
+        {% if table_data %}
+            <h1>Table Data:</h1>
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in table_data.0.keys() %}
+                            <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_data %}
+                        <tr>
+                            {% for key, value in row.items() %}
+                                <td>{{ value }}</td>
+                            {% endfor %}
+                        </tr>
+                        <tr>
+                            <td colspan="{{ row|length }}"><img src="static/images/{{ row['path_to_image'] }}" alt="Image"></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No data available.</p>
+        {% endif %}
+    </div>
+
+    <div id="image-container"></div>
+</body>
+</html>

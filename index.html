@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en-eu">
+<head>
+    <title>Execute Query</title>
+</head>
+<body>
+    <h1>Execute Query</h1>
+
+    <h2>Fetch Latest Record</h2>
+    <form action="/execute_query/" method="get">
+        <button type="submit">Fetch Latest Record</button>
+    </form>
+
+    <h2>Fetch Record by Index</h2>
+    <form action="/execute_query/" method="get">
+        <label for="index">Index:</label>
+        <input type="text" id="index" name="index" required>
+        <button type="submit">Fetch Record</button>
+    </form>
+</body>
+</html>

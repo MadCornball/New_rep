@@ -1,19 +1,24 @@
-from fastapi import FastAPI
-import psycopg2
-import socket
-from threading import Thread
+import threading
 import uvicorn
+import psycopg2
+import asyncio
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(debug=True)
+templates = Jinja2Templates(directory="templates")
 
-# Параметры подключения к базе данных PostgreSQL
+# Database connection parameters
 host = 'localhost'
 port = '5432'
-database = 'new_db'
+database = 'test_db'
 user = 'postgres'
 password = 'password'
 
-# Установка соединения с базой данных
+# Establish connection to the database
 connection = psycopg2.connect(
     host=host,
     port=port,
@@ -22,90 +27,108 @@ connection = psycopg2.connect(
     password=password
 )
 
-# Создание курсора
+# Create a cursor to execute queries
 cursor = connection.cursor()
 
-
-def handle_client(client_socket):
-    request = client_socket.recv(1024).decode()
-
-    # Обработка запроса
-    # Можно вызвать соответствующую функцию FastAPI и отправить результат обратно клиенту
-    # Пример:
-    # response = app(request)
-    # client_socket.send(response.encode())
-
-    client_socket.close()
+# WebSocket соединения
+connected_websockets = set()
 
 
-def start_socket_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('192.168.1.103', 8001))
-    server_socket.listen(5)
+# Функция проверки разрешения доступа к WebSocket соединениям
+async def check_ws_permission(websocket: WebSocket):
+    # Здесь можно добавить логику проверки разрешения доступа
+    # Например, проверить авторизацию пользователя или другие параметры
 
+    # В данном примере разрешаем всем подключениям
+    return True
+
+# Обработчик WebSocket соединения
+@app.websocket("/ws/")
+async def websocket_endpoint(websocket: WebSocket):
+    # Проверяем разрешение доступа
+    if not await check_ws_permission(websocket):
+        await websocket.close()
+        return
+
+    await websocket.accept()
+    connected_websockets.add(websocket)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "get_table_data":
+                table_data = get_table_data()
+                await websocket.send_json({"table_data": table_data})
+    except WebSocketDisconnect:
+        connected_websockets.remove(websocket)
+
+def get_table_data(table_name=None):
+    try:
+        if table_name:
+            cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'test' AND table_name = %s)", (table_name,))
+            if cursor.fetchone()[0]:
+                query = f"SELECT * FROM test_db.test.{table_name};"
+                cursor.execute(query)
+                results = cursor.fetchall()
+                if results:
+                    data = []
+                    column_names = [desc[0] for desc in cursor.description]
+                    for result in results:
+                        row_data = {}
+                        for i in range(len(column_names)):
+                            key = column_names[i]
+                            value = result[i]
+                            if key == 'image':
+                                value = '/static/images/'
+                            row_data[key] = value
+                        data.append(row_data)
+                    return data
+                else:
+                    return []
+            else:
+                return []
+        else:
+            query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'test';"
+            cursor.execute(query)
+            results = cursor.fetchall()
+            if results:
+                table_names = [result[0] for result in results]
+                return {"tables": table_names}
+            else:
+                return []
+    except Exception as e:
+        print(f"SQL Query Error: {e}")
+        return []
+    finally:
+        connection.commit()
+
+
+# Отправка данных по сокетам всем подключенным клиентам
+async def send_data_to_websockets():
     while True:
-        client_socket, address = server_socket.accept()
-        client_thread = Thread(target=handle_client, args=(client_socket,))
-        client_thread.start()
+        try:
+            for websocket in connected_websockets:
+                table_data = get_table_data()
+                await websocket.send_json({"table_data": table_data})
+            await asyncio.sleep(5)  # Пауза между отправками данных (5 секунд в данном примере)
+        except Exception as e:
+            print(f"Error sending data: {e}")
 
+@app.get("/", response_class=HTMLResponse)
+def get_all_tables(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request, "tables": get_table_data()})
 
-@app.get("/execute_query/")
-def execute_query():
-    query = """
-    SELECT *
-    FROM schema_first.table_name_1
-    WHERE ctid = (
-        SELECT max(ctid)
-        FROM schema_first.table_name_1
-    );
-    """
-    cursor.execute(query)
-    result = cursor.fetchone()
+@app.get("/{table_name}/", response_class=HTMLResponse)
+def get_table_data_html(request: Request, table_name: str):
+    table_data = get_table_data(table_name)
+    return templates.TemplateResponse("index.html", {"request": request, "table_data": table_data})
 
-    if result is None:
-        return {"message": "No records found"}
+@app.get("/api/{table_name}/")
+def get_table_data_api(table_name: str):
+    table_data = get_table_data(table_name)
+    return table_data
 
-    result_dict = {"user_name": result[0], "last_name": result[1], "description": result[2]}
-    return result_dict
+app.mount("/static", StaticFiles(directory="templates/static"), name="static")
 
-
-@app.get("/execute_query/{index}")
-def execute_query(index: str or int):
-    query = f"""
-    select t2.*
-    from (SELECT t.*, t.ctid
-        FROM schema_first.table_name_1 as t
-        where t.CTID >= (select schema_first.table_name_1.CTID from schema_first.table_name_1 where schema_first.table_name_1.user_name like '{index}' limit 1)
-        limit 2) as t2
-    order by t2.CTID DESC
-    limit 1;
-    """
-    cursor.execute(query)
-    result = cursor.fetchone()
-
-    if result is None:
-        return {"message": "No records found after the provided index"}
-
-    result_dict = {"user_name": result[0], "last_name": result[1], "description": result[2]}
-    return result_dict
-
-
-@app.on_event("startup")
-def startup_event():
-    # Запуск сервера TCP-сокетов в отдельном потоке
-    socket_thread = Thread(target=start_socket_server)
-    socket_thread.start()
-
-
-@app.on_event("shutdown")
-def shutdown_event():
-    cursor.close()
-    connection.close()
-    # Завершение сервера TCP-сокетов
-
-
-# Запуск сервера FastAPI с Uvicorn
 if __name__ == "__main__":
-
-
-    uvicorn.run(app, host="192.168.1.103", port=8000)
+    threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "192.168.1.6", "port": 8000}).start()
